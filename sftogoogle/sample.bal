@@ -37,7 +37,7 @@ configurable SalesforceOAuth2Config salesforceOAuthConfig = ?;
 configurable string salesforceBaseUrl = ?;
 configurable string salesforceObject = ?;
 
-configurable GSheetOAuth2Config GSheetOAuthConfig = ?;
+configurable GSheetOAuth2Config gSheetOAuthConfig = ?;
 configurable string spreadsheetId = ?;
 configurable string worksheetName = ?;
 
@@ -52,8 +52,7 @@ service sfdcListener:RecordService on sfdcEventListener {
     remote function onCreate(sfdcListener:EventData payload) {
         log:printInfo("New record created ####### tested", payload = payload);
         string sobjectId = payload?.metadata?.recordId ?: "";
-        string path = string `${BASE_URL}${salesforceObject}/${sobjectId}`;
-        map<json> sobjectInfo = {};
+
         do {
             sfdc:Client sfdcClient = check new ({
                 baseUrl: salesforceBaseUrl,
@@ -64,42 +63,56 @@ service sfdcListener:RecordService on sfdcEventListener {
                     refreshUrl: salesforceOAuthConfig.refreshUrl
                 }
             });
-            log:printInfo("Retriving Record", payload = path);
-            sobjectInfo = <map<json>>check sfdcClient->getRecord(path);
+            log:printInfo("Retriving Record", payload = sobjectId);
+            record {}|error res = sfdcClient->getById("Lead", sobjectId);
 
-            log:printInfo("Connecting Google Sheet via client", payload = path);
+            string[] columnNames = [];
+            GsheetCellValueType[] values = [];
+            log:printInfo("Retriving ###");
+            if res is record {} {
+                // Iterate over all fields in the record
+                log:printInfo("Iterating over the fields of the Salesforce record");
+                foreach var [key, value] in res.entries() {
+                    log:printInfo("####");
+                    log:printInfo("Field: " + key + ", Value: " + value.toString());
+                    columnNames.push(key);
+                    values.push(value.toString());
+                }
+            } else {
+                log:printError("Error while fetching Salesforce record", err = res.message());
+            }
 
-            sheets:Client gSheetClient = check new ({
+            log:printInfo("Connecting Google Sheet via client #1");
+
+            sheets:Client|error gSheetClientResult = new ({
                 auth: {
-                    clientId: GSheetOAuthConfig.clientId,
-                    clientSecret: GSheetOAuthConfig.clientSecret,
-                    refreshToken: GSheetOAuthConfig.refreshToken,
-                    refreshUrl: GSheetOAuthConfig.refreshUrl
+                    clientId: gSheetOAuthConfig.clientId,
+                    clientSecret: gSheetOAuthConfig.clientSecret,
+                    refreshToken: gSheetOAuthConfig.refreshToken,
+                    refreshUrl: gSheetOAuthConfig.refreshUrl
                 }
             });
 
-            log:printInfo("Connecting Google Successfull");
+            if (gSheetClientResult is sheets:Client) {
+                log:printInfo("Connecting to Google Sheets successfully #2");
 
-            // Get relevent sobject information
+                sheets:Row|error headersResult = gSheetClientResult->getRow(spreadsheetId, worksheetName, HEADINGS_ROW);
+                if (headersResult is sheets:Row) {
+                    sheets:Row headers = headersResult;
+                    log:printInfo("Creating GR ####### #1", payload = payload);
+                    if headers.values.length() == 0 {
+                        check gSheetClientResult->appendRowToSheet(spreadsheetId, worksheetName, columnNames);
+                        log:printInfo("Creating GR ####### #2", payload = payload);
+                    }
 
-            // Populate column names, values for GSheet
-            string[] columnNames = [];
-            GsheetCellValueType[] values = [];
-            foreach [string, json] [key, value] in sobjectInfo.entries() {
-                columnNames.push(key);
-                values.push(value.toString());
+                    check gSheetClientResult->appendRowToSheet(spreadsheetId, worksheetName, values);
+                    log:printInfo(string `${salesforceObject} with Id ${sobjectId} added to spreadsheet successfully`);
+                } else {
+                    log:printError("Error retrieving headers from Google Sheets", err = headersResult.message());
+                }
+            } else {
+                log:printError("Error connecting to Google Sheets", err = gSheetClientResult.message());
             }
-
-            sheets:Row headers = check gSheetClient->getRow(spreadsheetId, worksheetName, HEADINGS_ROW);
-            log:printInfo("creating GR ####### #1", payload = payload);
-            if headers.values.length() == 0 {
-                check gSheetClient->appendRowToSheet(spreadsheetId, worksheetName, columnNames);
-                log:printInfo("creating GR ####### #2", payload = payload);
-            }
-
-            check gSheetClient->appendRowToSheet(spreadsheetId, worksheetName, values);
-
-            log:printInfo(string `${salesforceObject} with Id ${sobjectId} added to spreadsheet successfully`);
 
         } on fail var e {
 
