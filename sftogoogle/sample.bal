@@ -47,51 +47,61 @@ listener sfdcListener:Listener sfdcEventListener = new ({
     channelName: CHANNEL_PREFIX + salesforceObject + EVENT_POSTFIX
 });
 
-@display { label: "Salesforce New Record to Google Sheets Row" }
+@display {label: "Salesforce New Record to Google Sheets Row"}
 service sfdcListener:RecordService on sfdcEventListener {
-    remote function onCreate(sfdcListener:EventData payload) returns error? {
-        log:printInfo("New record created ####### tested", payload=payload);
+    remote function onCreate(sfdcListener:EventData payload) {
+        log:printInfo("New record created ####### tested", payload = payload);
         string sobjectId = payload?.metadata?.recordId ?: "";
         string path = string `${BASE_URL}${salesforceObject}/${sobjectId}`;
-        sfdc:Client sfdcClient = check new ({
-            baseUrl: salesforceBaseUrl,
-            auth: {
-                clientId: salesforceOAuthConfig.clientId,
-                clientSecret: salesforceOAuthConfig.clientSecret,
-                refreshToken: salesforceOAuthConfig.refreshToken,
-                refreshUrl: salesforceOAuthConfig.refreshUrl
-            }
-        });
-        // Get relevent sobject information
-        map<json> sobjectInfo = <map<json>>check sfdcClient->getRecord(path);
+        map<json> sobjectInfo = {};
+        do {
+            sfdc:Client sfdcClient = check new ({
+                baseUrl: salesforceBaseUrl,
+                auth: {
+                    clientId: salesforceOAuthConfig.clientId,
+                    clientSecret: salesforceOAuthConfig.clientSecret,
+                    refreshToken: salesforceOAuthConfig.refreshToken,
+                    refreshUrl: salesforceOAuthConfig.refreshUrl
+                }
+            });
+            sobjectInfo = <map<json>>check sfdcClient->getRecord(path);
 
-        // Populate column names, values for GSheet
-        string[] columnNames = [];
-        GsheetCellValueType[] values = [];        
-        foreach [string, json] [key, value] in sobjectInfo.entries() {
-            columnNames.push(key);
-            values.push(value.toString());
+            sheets:Client gSheetClient = check new ({
+                auth: {
+                    clientId: GSheetOAuthConfig.clientId,
+                    clientSecret: GSheetOAuthConfig.clientSecret,
+                    refreshToken: GSheetOAuthConfig.refreshToken,
+                    refreshUrl: GSheetOAuthConfig.refreshUrl
+                }
+            });
+
+            // Get relevent sobject information
+
+            // Populate column names, values for GSheet
+            string[] columnNames = [];
+            GsheetCellValueType[] values = [];
+            foreach [string, json] [key, value] in sobjectInfo.entries() {
+                columnNames.push(key);
+                values.push(value.toString());
+            }
+
+            sheets:Row headers = check gSheetClient->getRow(spreadsheetId, worksheetName, HEADINGS_ROW);
+            log:printInfo("creating GR ####### #1", payload = payload);
+            if headers.values.length() == 0 {
+                check gSheetClient->appendRowToSheet(spreadsheetId, worksheetName, columnNames);
+                log:printInfo("creating GR ####### #2", payload = payload);
+            }
+
+            check gSheetClient->appendRowToSheet(spreadsheetId, worksheetName, values);
+
+            log:printInfo(string `${salesforceObject} with Id ${sobjectId} added to spreadsheet successfully`);
+
+        } on fail var e {
+
+            log:printError("Error while fetching Salesforce record", err = e.message());
+            return;
         }
 
-        sheets:Client gSheetClient = check new ({
-            auth: {
-                clientId: GSheetOAuthConfig.clientId,
-                clientSecret: GSheetOAuthConfig.clientSecret,
-                refreshToken: GSheetOAuthConfig.refreshToken,
-                refreshUrl: GSheetOAuthConfig.refreshUrl
-            }
-        });
-
-        sheets:Row headers = check gSheetClient->getRow(spreadsheetId, worksheetName, HEADINGS_ROW);
-         log:printInfo("creating GR ####### #1", payload=payload);
-        if headers.values.length() == 0 {
-            check gSheetClient->appendRowToSheet(spreadsheetId, worksheetName, columnNames);
-             log:printInfo("creating GR ####### #2", payload=payload);
-        }
-
-        check gSheetClient->appendRowToSheet(spreadsheetId, worksheetName, values);
-
-        log:printInfo(string `${salesforceObject} with Id ${sobjectId} added to spreadsheet successfully`);
     }
 
     remote function onDelete(sfdcListener:EventData payload) returns error? {
