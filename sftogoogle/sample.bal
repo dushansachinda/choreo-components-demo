@@ -64,7 +64,10 @@ service sfdcListener:RecordService on sfdcEventListener {
                     refreshUrl: salesforceOAuthConfig.refreshUrl
                 }
             });
+            log:printInfo("Retriving Record", payload = path);
             sobjectInfo = <map<json>>check sfdcClient->getRecord(path);
+
+            log:printInfo("Connecting Google Sheet via client", payload = path);
 
             sheets:Client gSheetClient = check new ({
                 auth: {
@@ -74,6 +77,8 @@ service sfdcListener:RecordService on sfdcEventListener {
                     refreshUrl: GSheetOAuthConfig.refreshUrl
                 }
             });
+
+            log:printInfo("Connecting Google Successfull");
 
             // Get relevent sobject information
 
