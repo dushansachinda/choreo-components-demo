@@ -37,7 +37,7 @@ configurable SalesforceOAuth2Config salesforceOAuthConfig = ?;
 configurable string salesforceBaseUrl = ?;
 configurable string salesforceObject = ?;
 
-configurable GSheetOAuth2Config gSheetOAuthConfig = ?;
+configurable GSheetOAuth2Config GSheetOAuthConfig = ?;
 configurable string spreadsheetId = ?;
 configurable string worksheetName = ?;
 
@@ -86,10 +86,10 @@ service sfdcListener:RecordService on sfdcEventListener {
 
             sheets:Client|error gSheetClientResult = new ({
                 auth: {
-                    clientId: gSheetOAuthConfig.clientId,
-                    clientSecret: gSheetOAuthConfig.clientSecret,
-                    refreshToken: gSheetOAuthConfig.refreshToken,
-                    refreshUrl: gSheetOAuthConfig.refreshUrl
+                    clientId: GSheetOAuthConfig.clientId,
+                    clientSecret: GSheetOAuthConfig.clientSecret,
+                    refreshToken: GSheetOAuthConfig.refreshToken,
+                    refreshUrl: GSheetOAuthConfig.refreshUrl
                 }
             });
 
