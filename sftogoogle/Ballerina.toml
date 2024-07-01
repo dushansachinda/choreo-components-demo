@@ -2,7 +2,7 @@
   observabilityIncluded = true
 
 [package]
-  distribution = "2201.3.1"
+  distribution = "2201.8.6"
   export = ["sfdc_new_record_to_google_sheet_row"]
   icon = "docs/icon.png"
   keywords = ["Kind/Sample","Type/Webhook","Category/Integration"]
